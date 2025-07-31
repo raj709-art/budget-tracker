@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Government Budget Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/web3@1.8.2/dist/web3.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+    .section {
+      background: white;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .section h3 {
+      margin-top: 0;
+    }
+    input, button {
+      padding: 6px;
+      margin: 4px 0;
+      width: 100%;
+      max-width: 400px;
+    }
+    .text-danger {
+      color: red;
+    }
+    .badge {
+      display: inline-block;
+      padding: 5px 10px;
+      background-color: #e2e6ea;
+      border-radius: 5px;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="web3Status" class="section">
+    <button id="connectWalletBtn" class="btn btn-outline-light btn-sm">Connect Wallet</button>
+  </div>
+
+  <div class="section">
+    <h3>Allocate Budget</h3>
+    <input type="text" id="allocateDept" placeholder="Department ID (e.g. Health)" />
+    <input type="number" id="allocateAmount" placeholder="Amount in ETH" />
+    <button onclick="allocateBudget()">Allocate</button>
+  </div>
+
+  <div class="section">
+    <h3>Spend Budget</h3>
+    <input type="text" id="spendDept" placeholder="Department ID" />
+    <input type="number" id="spendAmount" placeholder="Amount in ETH" />
+    <button onclick="spendBudget()">Spend</button>
+  </div>
+
+  <div class="section">
+    <h3>Check Spent Amount</h3>
+    <input type="text" id="checkDept" placeholder="Department ID" />
+    <button onclick="checkSpent()">Check</button>
+    <div id="spentResult"></div>
+  </div>
+
+<script>
+  let web3;
+  let contract;
+  let userAccount;
+
+  const contractAddress = "0x2EbA99042764664d0636e2A678F9a1BB9BCdc0fa";
+  const contractABI = [
+    {
+      "inputs": [
+        { "internalType": "string", "name": "deptId", "type": "string" },
+        { "internalType": "uint256", "name": "amount", "type": "uint256" }
+      ],
+      "name": "allocateBudget",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "string", "name": "deptId", "type": "string" },
+        { "internalType": "uint256", "name": "amount", "type": "uint256" }
+      ],
+      "name": "spendFunds",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "string", "name": "deptId", "type": "string" }
+      ],
+      "name": "getSpentAmount",
+      "outputs": [
+        { "internalType": "uint256", "name": "", "type": "uint256" }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ];
+
+  window.addEventListener('load', async () => {
+    if (window.ethereum) {
+      web3 = new Web3(window.ethereum);
+      contract = new web3.eth.Contract(contractABI, contractAddress);
+
+      document.getElementById("connectWalletBtn").onclick = handleConnectWallet;
+
+      const accounts = await ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0) {
+        userAccount = accounts[0];
+        updateWalletStatus();
+      }
+    } else {
+      alert("MetaMask not detected. Please install it.");
+    }
+  });
+
+  async function handleConnectWallet() {
+    try {
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      userAccount = accounts[0];
+      updateWalletStatus();
+    } catch (err) {
+      document.getElementById("web3Status").innerHTML = `<span class="text-danger">Wallet connection denied.</span>`;
+    }
+  }
+
+  function updateWalletStatus() {
+    const statusDiv = document.getElementById("web3Status");
+    if (userAccount) {
+      statusDiv.innerHTML = `
+        <span class="badge">Wallet: ${userAccount.slice(0,6)}...${userAccount.slice(-4)}</span>
+        <button class="btn btn-outline-light btn-sm" disabled>Connected</button>
+      `;
+    } else {
+      statusDiv.innerHTML = `<button id="connectWalletBtn" class="btn btn-outline-light btn-sm">Connect Wallet</button>`;
+      document.getElementById("connectWalletBtn").onclick = handleConnectWallet;
+    }
+  }
+
+  async function allocateBudget() {
+    const deptId = document.getElementById("allocateDept").value.trim();
+    const amountEth = document.getElementById("allocateAmount").value;
+    const amountWei = web3.utils.toWei(amountEth, 'ether');
+
+    try {
+      await contract.methods.allocateBudget(deptId, amountWei)
+        .send({ from: userAccount });
+      alert("Budget allocated successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Error allocating budget.");
+    }
+  }
+
+  async function spendBudget() {
+    const deptId = document.getElementById("spendDept").value.trim();
+    const amountEth = document.getElementById("spendAmount").value;
+    const amountWei = web3.utils.toWei(amountEth, 'ether');
+
+    try {
+      await contract.methods.spendFunds(deptId, amountWei)
+        .send({ from: userAccount });
+      alert("Funds spent successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Error spending funds.");
+    }
+  }
+
+  async function checkSpent() {
+    const deptId = document.getElementById("checkDept").value.trim();
+    try {
+      const spentWei = await contract.methods.getSpentAmount(deptId).call();
+      const spentEth = web3.utils.fromWei(spentWei, 'ether');
+      document.getElementById("spentResult").innerText = `Spent Amount: ${spentEth} ETH`;
+    } catch (err) {
+      console.error(err);
+      alert("Error fetching spent amount.");
+    }
+  }
+</script>
+</body>
+</html>
